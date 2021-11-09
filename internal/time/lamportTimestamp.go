@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"sync"
 
-	math "github.com/ap/dme2/internal/math"
+	math "github.com/ap/DME2/internal/math"
 )
 
 type LamportTimestamp struct {
