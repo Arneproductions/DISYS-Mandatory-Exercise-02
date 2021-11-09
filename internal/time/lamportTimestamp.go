@@ -13,7 +13,6 @@ type LamportTimestamp struct {
 }
 
 func GetLamportTimeStamp() LamportTimestamp {
-
 	return LamportTimestamp{time: 0, lock: sync.Mutex{}}
 }
 
@@ -36,4 +35,8 @@ func (v *LamportTimestamp) Increment() {
 	defer v.lock.Unlock()
 
 	v.time += 1
+}
+
+func (v *LamportTimestamp) GetTime() int32 {
+	return v.time
 }
