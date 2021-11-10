@@ -1,7 +1,6 @@
 package main
 
 import (
-	"container/list"
 	"context"
 	"flag"
 	"log"
@@ -12,6 +11,7 @@ import (
 
 	pb "github.com/ap/DME2/api"
 	"github.com/ap/DME2/internal/time"
+	col "github.com/ap/DME2/internal/collection"
 	"github.com/hashicorp/serf/serf"
 	"google.golang.org/grpc"
 )
@@ -36,7 +36,7 @@ type Node struct {
 	processId int
 	cluster   *serf.Serf
 	responses int
-	queue     *list.List
+	queue     col.Queue
 }
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 	flag.Parse()
 	node := &Node{
 		processId: os.Getpid(),
-		queue:     list.New(),
+		queue:     col.NewQueue(),
 	}
 
 	node.StartServer()
@@ -142,4 +142,17 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 	n.timestamp.Increment()
 
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
+}
+
+/*
+* Exits the 'HELD' mode and releases the distributed lock, by telling other nodes in the network
+*/
+func (n *Node) Exit() {
+	if n.status !=  Status_HELD{
+		return // only when we are in status 'HELD' will this function be executed...
+	}
+
+	for !n.queue.IsEmpty() {
+		addr := string(n.queue.Pop())
+	}
 }
