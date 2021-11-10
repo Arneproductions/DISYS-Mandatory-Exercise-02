@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -10,10 +11,11 @@ import (
 	goTime "time"
 
 	pb "github.com/ap/DME2/api"
-	"github.com/ap/DME2/internal/time"
 	col "github.com/ap/DME2/internal/collection"
+	"github.com/ap/DME2/internal/time"
 	"github.com/hashicorp/serf/serf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
 )
 
 const (
@@ -49,6 +51,12 @@ func main() {
 
 	node.StartServer()
 	node.StartCluster(clusterAddr)
+}
+
+func getClientIpAddress(c context.Context) string {
+	p, _ := peer.FromContext(c)
+
+	return p.Addr.String()
 }
 
 func (n *Node) StartServer() {
@@ -124,10 +132,14 @@ func (n *Node) SendRes(target string) {
 // Handle incoming Req message
 // TODO: Implement handling of request here
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
+
+	callerIp := getClientIpAddress(ctx)
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
 		// TODO: Send request to queue
+		n.queue.Push(callerIp)
 	} else {
 		// TODO: Send response
+		n.SendRes(callerIp)
 	}
 
 	n.timestamp.Sync(in.GetTime())
@@ -153,6 +165,7 @@ func (n *Node) Exit() {
 	}
 
 	for !n.queue.IsEmpty() {
-		addr := string(n.queue.Pop())
+		addr := fmt.Sprintf("%v", n.queue.Pop())
+		n.SendRes(addr)
 	}
 }
