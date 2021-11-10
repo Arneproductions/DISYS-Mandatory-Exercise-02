@@ -97,7 +97,7 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 		n.timestamp.Increment()
 
 		// Set up a connection to the server.
-		conn, err := grpc.Dial(member.Addr, grpc.WithInsecure())
+		conn, err := grpc.Dial(member.Addr.String(), grpc.WithInsecure())
 		if err != nil {
 			return err
 		}
@@ -136,7 +136,7 @@ func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTim
 	callerIp := getClientIpAddress(ctx)
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
 		// TODO: Send request to queue
-		n.queue.Push(callerIp)
+		n.queue.Enqueue(callerIp)
 	} else {
 		// TODO: Send response
 		n.SendRes(callerIp)
@@ -158,14 +158,14 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 
 /*
 * Exits the 'HELD' mode and releases the distributed lock, by telling other nodes in the network
-*/
+ */
 func (n *Node) Exit() {
-	if n.status !=  Status_HELD{
+	if n.status != Status_HELD {
 		return // only when we are in status 'HELD' will this function be executed...
 	}
 
 	for !n.queue.IsEmpty() {
-		addr := fmt.Sprintf("%v", n.queue.Pop())
+		addr := fmt.Sprintf("%v", n.queue.Dequeue())
 		n.SendRes(addr)
 	}
 }

@@ -22,7 +22,7 @@ func (q *Queue) IsEmpty() bool {
 	return q.list.Len() > 0
 }
 
-func (q *Queue) Push(v interface{}) error {
+func (q *Queue) Enqueue(v interface{}) error {
 	if v == nil {
 		return errors.New("Input is nil!")
 	}
@@ -31,7 +31,7 @@ func (q *Queue) Push(v interface{}) error {
 	return nil
 }
 
-func (q *Queue) Pop() interface{} {
+func (q *Queue) Dequeue() interface{} {
 	if q.IsEmpty() {
 		return nil
 	}
