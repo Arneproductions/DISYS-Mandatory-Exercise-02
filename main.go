@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	ip = "127.0.0.1:5001"
+	ip            = "127.0.0.1:5001"
+	advertiseAddr = "127.0.0.1"
 )
 
 type Status int32
@@ -49,8 +50,8 @@ func main() {
 		queue:     col.NewQueue(),
 	}
 
-	node.StartServer()
 	node.StartCluster(clusterAddr)
+	node.StartServer()
 }
 
 func getClientIpAddress(c context.Context) string {
@@ -72,13 +73,16 @@ func (n *Node) StartServer() {
 	}
 }
 
+// Start and join a cluster
 func (n *Node) StartCluster(clusterAddr *string) error {
 	conf := serf.DefaultConfig()
 	conf.Init()
-	conf.MemberlistConfig.AdvertiseAddr = ip
+	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
+	conf.MemberlistConfig.AdvertisePort = 8080
 
 	cluster, err := serf.Create(conf)
 	if err != nil {
+		log.Printf("Couldn't create cluster, starting own: %v\n", err)
 		return err
 	}
 
@@ -93,6 +97,14 @@ func (n *Node) StartCluster(clusterAddr *string) error {
 
 // Send Req message
 func (n *Node) GetLock(in *pb.EmptyWithTime) error {
+	// We cannot ask others if we already have the lock / have asked
+	if n.status == Status_WANTED || n.status == Status_HELD {
+		return nil
+	}
+
+	n.status = Status_WANTED
+	n.responses = n.cluster.NumNodes() - 1
+
 	for _, member := range n.cluster.Members() {
 		n.timestamp.Increment()
 
@@ -105,7 +117,6 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 		defer conn.Close()
 		c := pb.NewDmeApiServiceClient(conn)
 
-		// Contact the server and print out its response.
 		ctx, cancel := context.WithTimeout(context.Background(), goTime.Second)
 		defer cancel()
 
@@ -151,7 +162,16 @@ func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTim
 // Handle incoming Res
 // TODO: Implement handling of release here
 func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime, error) {
+	n.timestamp.Sync(in.GetTime())
 	n.timestamp.Increment()
+
+	// Decrease response count
+	n.responses -= 1
+
+	// If all nodes have responded, we have achieved lock
+	if n.responses == 0 {
+		n.status = Status_HELD
+	}
 
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
 }
@@ -168,4 +188,6 @@ func (n *Node) Exit() {
 		addr := fmt.Sprintf("%v", n.queue.Dequeue())
 		n.SendRes(addr)
 	}
+
+	n.status = Status_RELEASED
 }
