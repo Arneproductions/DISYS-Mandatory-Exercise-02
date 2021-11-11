@@ -1,0 +1,33 @@
+version: "3.3"
+services:
+  client-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CLUSTER_HOST: "cluster"
+    depends_on:
+      - cluster
+
+  client-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CLUSTER_HOST: "cluster"
+    depends_on:
+      - cluster
+
+  client-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CLUSTER_HOST: "cluster"
+    depends_on:
+      - cluster
+
+  cluster:
+    build:
+      context: .
+      dockerfile: Dockerfile

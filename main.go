@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	ip = "127.0.0.1:5001"
+	ip            = "127.0.0.1:5001"
+	advertiseAddr = "127.0.0.1"
 )
 
 type Status int32
@@ -49,8 +50,8 @@ func main() {
 		queue:     col.NewQueue(),
 	}
 
-	node.StartServer()
 	node.StartCluster(clusterAddr)
+	node.StartServer()
 }
 
 func getClientIpAddress(c context.Context) string {
@@ -76,10 +77,12 @@ func (n *Node) StartServer() {
 func (n *Node) StartCluster(clusterAddr *string) error {
 	conf := serf.DefaultConfig()
 	conf.Init()
-	conf.MemberlistConfig.AdvertiseAddr = ip
+	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
+	conf.MemberlistConfig.AdvertisePort = 8080
 
 	cluster, err := serf.Create(conf)
 	if err != nil {
+		log.Printf("Couldn't create cluster, starting own: %v\n", err)
 		return err
 	}
 
