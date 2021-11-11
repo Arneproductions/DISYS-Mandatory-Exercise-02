@@ -1,9 +1,9 @@
 package main
 
 import (
-	"container/list"
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -11,9 +11,11 @@ import (
 	goTime "time"
 
 	pb "github.com/ap/DME2/api"
+	col "github.com/ap/DME2/internal/collection"
 	"github.com/ap/DME2/internal/time"
 	"github.com/hashicorp/serf/serf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
 )
 
 const (
@@ -36,7 +38,7 @@ type Node struct {
 	processId int
 	cluster   *serf.Serf
 	responses int
-	queue     *list.List
+	queue     col.Queue
 }
 
 func main() {
@@ -44,11 +46,17 @@ func main() {
 	flag.Parse()
 	node := &Node{
 		processId: os.Getpid(),
-		queue:     list.New(),
+		queue:     col.NewQueue(),
 	}
 
 	node.StartServer()
 	node.StartCluster(clusterAddr)
+}
+
+func getClientIpAddress(c context.Context) string {
+	p, _ := peer.FromContext(c)
+
+	return p.Addr.String()
 }
 
 func (n *Node) StartServer() {
@@ -89,7 +97,7 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 		n.timestamp.Increment()
 
 		// Set up a connection to the server.
-		conn, err := grpc.Dial(member.Addr, grpc.WithInsecure())
+		conn, err := grpc.Dial(member.Addr.String(), grpc.WithInsecure())
 		if err != nil {
 			return err
 		}
@@ -124,10 +132,14 @@ func (n *Node) SendRes(target string) {
 // Handle incoming Req message
 // TODO: Implement handling of request here
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
+
+	callerIp := getClientIpAddress(ctx)
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
 		// TODO: Send request to queue
+		n.queue.Enqueue(callerIp)
 	} else {
 		// TODO: Send response
+		n.SendRes(callerIp)
 	}
 
 	n.timestamp.Sync(in.GetTime())
@@ -142,4 +154,18 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 	n.timestamp.Increment()
 
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
+}
+
+/*
+* Exits the 'HELD' mode and releases the distributed lock, by telling other nodes in the network
+ */
+func (n *Node) Exit() {
+	if n.status != Status_HELD {
+		return // only when we are in status 'HELD' will this function be executed...
+	}
+
+	for !n.queue.IsEmpty() {
+		addr := fmt.Sprintf("%v", n.queue.Dequeue())
+		n.SendRes(addr)
+	}
 }
