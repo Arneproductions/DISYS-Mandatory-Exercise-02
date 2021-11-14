@@ -33,7 +33,6 @@ const (
 
 type Node struct {
 	pb.UnimplementedDmeApiServiceServer
-	client    pb.DmeApiServiceClient
 	timestamp time.LamportTimestamp
 	status    Status
 	processId int
@@ -135,21 +134,36 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 }
 
 // Send Res message
-// TODO: Implement me
 func (n *Node) SendRes(target string) {
+	conn, err := grpc.Dial(target, grpc.WithInsecure())
+	if err != nil {
+		return
+	}
 
+	defer conn.Close()
+	c := pb.NewDmeApiServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), goTime.Second)
+	defer cancel()
+
+	n.timestamp.Increment()
+	msg, err := c.Res(ctx, &pb.EmptyWithTime{
+		Time:      n.timestamp.GetTime(),
+	})
+	if err != nil {
+		return 
+	}
+
+	n.timestamp.Sync(msg.GetTime())
 }
 
 // Handle incoming Req message
-// TODO: Implement handling of request here
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
 
 	callerIp := getClientIpAddress(ctx)
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
-		// TODO: Send request to queue
 		n.queue.Enqueue(callerIp)
 	} else {
-		// TODO: Send response
 		n.SendRes(callerIp)
 	}
 
