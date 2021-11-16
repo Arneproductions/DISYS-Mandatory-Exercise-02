@@ -2,25 +2,23 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strings"
 
 	goTime "time"
 
 	pb "github.com/ap/DME2/api"
 	col "github.com/ap/DME2/internal/collection"
 	"github.com/ap/DME2/internal/time"
-	"github.com/hashicorp/serf/serf"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )
 
 const (
-	ip            = "127.0.0.1:5001"
-	advertiseAddr = "127.0.0.1"
+	ip = "127.0.0.1:5001"
 )
 
 type Status int32
@@ -35,21 +33,19 @@ type Node struct {
 	pb.UnimplementedDmeApiServiceServer
 	timestamp time.LamportTimestamp
 	status    Status
-	processId int
-	cluster   *serf.Serf
 	responses int
 	queue     col.Queue
+	members   []string
 }
 
 func main() {
-	clusterAddr := flag.String("clusterAddress", "localhost", "")
-	flag.Parse()
+	clients := strings.Split(os.Getenv("CLIENTS"), ",")
+
 	node := &Node{
-		processId: os.Getpid(),
-		queue:     col.NewQueue(),
+		queue:   col.NewQueue(),
+		members: clients,
 	}
 
-	node.StartCluster(clusterAddr)
 	node.StartServer()
 }
 
@@ -72,28 +68,6 @@ func (n *Node) StartServer() {
 	}
 }
 
-// Start and join a cluster
-func (n *Node) StartCluster(clusterAddr *string) error {
-	conf := serf.DefaultConfig()
-	conf.Init()
-	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
-	conf.MemberlistConfig.AdvertisePort = 8080
-
-	cluster, err := serf.Create(conf)
-	if err != nil {
-		log.Printf("Couldn't create cluster, starting own: %v\n", err)
-		return err
-	}
-
-	_, err = cluster.Join([]string{*clusterAddr}, true)
-	if err != nil {
-		log.Printf("Couldn't join cluster, starting own: %v\n", err)
-	}
-
-	n.cluster = cluster
-	return nil
-}
-
 // Send Req message
 func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 	// We cannot ask others if we already have the lock / have asked
@@ -102,13 +76,13 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 	}
 
 	n.status = Status_WANTED
-	n.responses = n.cluster.NumNodes() - 1
+	n.responses = len(n.members)
 
-	for _, member := range n.cluster.Members() {
+	for _, member := range n.members {
 		n.timestamp.Increment()
 
 		// Set up a connection to the server.
-		conn, err := grpc.Dial(member.Addr.String(), grpc.WithInsecure())
+		conn, err := grpc.Dial(member, grpc.WithInsecure())
 		if err != nil {
 			return err
 		}
@@ -120,8 +94,7 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 		defer cancel()
 
 		msg, err := c.Req(ctx, &pb.RequestMessage{
-			Time:      n.timestamp.GetTime(),
-			ProcessId: int32(n.processId),
+			Time: n.timestamp.GetTime(),
 		})
 		if err != nil {
 			return err
@@ -148,10 +121,10 @@ func (n *Node) SendRes(target string) {
 
 	n.timestamp.Increment()
 	msg, err := c.Res(ctx, &pb.EmptyWithTime{
-		Time:      n.timestamp.GetTime(),
+		Time: n.timestamp.GetTime(),
 	})
 	if err != nil {
-		return 
+		return
 	}
 
 	n.timestamp.Sync(msg.GetTime())
