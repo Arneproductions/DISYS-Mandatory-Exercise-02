@@ -42,19 +42,15 @@ type Node struct {
 }
 
 func main() {
-	// clusterAddr := flag.String("clusterAddress", "localhost", "")
+	clusterAddr := flag.String("clusterAddress", "localhost", "")
 	flag.Parse()
-	// node := &Node{
-	// 	processId: os.Getpid(),
-	// 	queue:     col.NewQueue(),
-	// }
+	node := &Node{
+		processId: os.Getpid(),
+		queue:     col.NewQueue(),
+	}
 
-	// node.StartCluster(clusterAddr)
-	// node.StartServer()
-
-	n := Node{}
-
-	n.WriteToFile()
+	node.StartCluster(clusterAddr)
+	node.StartServer()
 }
 
 func getClientIpAddress(c context.Context) string {
