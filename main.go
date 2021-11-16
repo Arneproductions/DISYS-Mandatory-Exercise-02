@@ -33,6 +33,7 @@ const (
 type Node struct {
 	pb.UnimplementedDmeApiServiceServer
 	timestamp time.LamportTimestamp
+	lockTs    int32
 	status    Status
 	responses int
 	queue     col.Queue
@@ -90,10 +91,10 @@ func (n *Node) GetLock() error {
 
 	n.status = Status_WANTED
 	n.responses = len(n.members)
+	n.timestamp.Increment()
+	n.lockTs = n.timestamp.GetTime()
 
 	for _, member := range n.members {
-		n.timestamp.Increment()
-
 		url := member + port
 		log.Printf("Send req to: %s\n", url)
 		// Set up a connection to the server.
@@ -108,14 +109,12 @@ func (n *Node) GetLock() error {
 		ctx, cancel := context.WithTimeout(context.Background(), goTime.Second)
 		defer cancel()
 
-		msg, err := c.Req(ctx, &pb.RequestMessage{
-			Time: n.timestamp.GetTime(),
+		_, err = c.Req(ctx, &pb.RequestMessage{
+			Time: n.GetTs(),
 		})
 		if err != nil {
 			return err
 		}
-
-		n.timestamp.Sync(msg.GetTime())
 	}
 
 	return nil
@@ -123,10 +122,10 @@ func (n *Node) GetLock() error {
 
 // Send Res message
 func (n *Node) SendRes(target string) {
-	log.Printf("Sending response\n")
-
-	url := target + port
+	// Work around the fact that a connection uses a random part
+	url := strings.Split(target, ":")[0] + port
 	log.Printf("Send res to: %s\n", url)
+
 	conn, err := grpc.Dial(url, grpc.WithInsecure())
 	if err != nil {
 		return
@@ -138,41 +137,34 @@ func (n *Node) SendRes(target string) {
 	ctx, cancel := context.WithTimeout(context.Background(), goTime.Second)
 	defer cancel()
 
-	n.timestamp.Increment()
-	msg, err := c.Res(ctx, &pb.EmptyWithTime{
-		Time: n.timestamp.GetTime(),
-	})
+	_, err = c.Res(ctx, &pb.Empty{})
 	if err != nil {
+		log.Printf("Res errored: %v\n", err)
 		return
 	}
-
-	n.timestamp.Sync(msg.GetTime())
 }
 
 // Handle incoming Req message
-func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
+func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.Empty, error) {
 	callerIp := getClientIpAddress(ctx)
 
-	log.Printf("Handling request from %s, current status: %d, local time: %d, in time: %d\n", callerIp, n.status, n.timestamp.GetTime(), in.GetTime())
+	log.Printf("Handling request from %s, current status: %d, local time: %d, in time: %d\n", callerIp, n.status, n.GetTs(), in.GetTime())
 
-	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
+	if n.status == Status_HELD || (n.status == Status_WANTED && n.GetTs() < in.GetTime()) {
 		n.queue.Enqueue(callerIp)
 	} else {
 		n.SendRes(callerIp)
 	}
 
 	n.timestamp.Sync(in.GetTime())
-	n.timestamp.Increment()
 
-	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
+	return &pb.Empty{}, nil
 }
 
 // Handle incoming Res
 // TODO: Implement handling of release here
-func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime, error) {
+func (n *Node) Res(ctx context.Context, in *pb.Empty) (*pb.Empty, error) {
 	log.Printf("Handling response from %s\n", getClientIpAddress(ctx))
-	n.timestamp.Sync(in.GetTime())
-	n.timestamp.Increment()
 
 	// Decrease response count
 	n.responses -= 1
@@ -186,7 +178,7 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 		go n.WriteToFile()
 	}
 
-	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
+	return &pb.Empty{}, nil
 }
 
 func (n *Node) WriteToFile() {
@@ -196,7 +188,12 @@ func (n *Node) WriteToFile() {
 		log.Fatal(err)
 	}
 
-	file.Write([]byte(n.timestamp.GetDisplayableContent() + "\n"))
+	name, err := os.Hostname()
+	if err != nil {
+		name = "NoHostname"
+	}
+
+	file.Write([]byte(fmt.Sprintf("%s: %s\n", name, n.timestamp.GetDisplayableContent())))
 
 	log.Printf("Closing file and exiting\n")
 	file.Close()
@@ -215,9 +212,18 @@ func (n *Node) Exit() {
 
 	log.Printf("Sending exit responses\n")
 	for !n.queue.IsEmpty() {
-		addr := fmt.Sprintf("%v", n.queue.Dequeue())
+		addr := n.queue.Dequeue().(string)
 		n.SendRes(addr)
 	}
 
 	n.status = Status_RELEASED
+}
+
+func (n *Node) GetTs() int32 {
+	// TODO: Change to andreas
+	if n.status == Status_WANTED || n.status == Status_HELD {
+		return n.lockTs
+	} else {
+		return n.timestamp.GetTime()
+	}
 }

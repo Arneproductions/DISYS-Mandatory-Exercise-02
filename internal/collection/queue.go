@@ -19,7 +19,7 @@ func NewQueue() Queue {
 }
 
 func (q *Queue) IsEmpty() bool {
-	return q.list.Len() > 0
+	return q.list.Len() == 0
 }
 
 func (q *Queue) Enqueue(v interface{}) error {

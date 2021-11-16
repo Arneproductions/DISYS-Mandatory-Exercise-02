@@ -2,12 +2,16 @@ syntax="proto3";
 option go_package = "github.com/ap/DME2/api";
 
 service DmeApiService {
-    rpc Req(RequestMessage) returns (EmptyWithTime);
-    rpc Res(EmptyWithTime) returns (EmptyWithTime);
+    rpc Req(RequestMessage) returns (Empty);
+    rpc Res(Empty) returns (Empty);
 }
 
 message RequestMessage {
     int32 time = 1;
+}
+
+message Empty {
+
 }
 
 message EmptyWithTime {
