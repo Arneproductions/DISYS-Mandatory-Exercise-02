@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	ip = "127.0.0.1:5001"
+	ip            = "127.0.0.1:5001"
+	advertiseAddr = "127.0.0.1"
 )
 
 type Status int32
@@ -32,7 +33,6 @@ const (
 
 type Node struct {
 	pb.UnimplementedDmeApiServiceServer
-	client    pb.DmeApiServiceClient
 	timestamp time.LamportTimestamp
 	status    Status
 	processId int
@@ -49,8 +49,8 @@ func main() {
 		queue:     col.NewQueue(),
 	}
 
-	node.StartServer()
 	node.StartCluster(clusterAddr)
+	node.StartServer()
 }
 
 func getClientIpAddress(c context.Context) string {
@@ -76,10 +76,12 @@ func (n *Node) StartServer() {
 func (n *Node) StartCluster(clusterAddr *string) error {
 	conf := serf.DefaultConfig()
 	conf.Init()
-	conf.MemberlistConfig.AdvertiseAddr = ip
+	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
+	conf.MemberlistConfig.AdvertisePort = 8080
 
 	cluster, err := serf.Create(conf)
 	if err != nil {
+		log.Printf("Couldn't create cluster, starting own: %v\n", err)
 		return err
 	}
 
@@ -132,21 +134,36 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 }
 
 // Send Res message
-// TODO: Implement me
 func (n *Node) SendRes(target string) {
+	conn, err := grpc.Dial(target, grpc.WithInsecure())
+	if err != nil {
+		return
+	}
 
+	defer conn.Close()
+	c := pb.NewDmeApiServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), goTime.Second)
+	defer cancel()
+
+	n.timestamp.Increment()
+	msg, err := c.Res(ctx, &pb.EmptyWithTime{
+		Time:      n.timestamp.GetTime(),
+	})
+	if err != nil {
+		return 
+	}
+
+	n.timestamp.Sync(msg.GetTime())
 }
 
 // Handle incoming Req message
-// TODO: Implement handling of request here
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
 
 	callerIp := getClientIpAddress(ctx)
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
-		// TODO: Send request to queue
 		n.queue.Enqueue(callerIp)
 	} else {
-		// TODO: Send response
 		n.SendRes(callerIp)
 	}
 
