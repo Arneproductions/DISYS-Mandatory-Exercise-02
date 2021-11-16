@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	ip = "127.0.0.1:5001"
+	port = ":5001"
 )
 
 type Status int32
@@ -46,6 +47,7 @@ func main() {
 		members: clients,
 	}
 
+	go node.Random()
 	node.StartServer()
 }
 
@@ -56,7 +58,7 @@ func getClientIpAddress(c context.Context) string {
 }
 
 func (n *Node) StartServer() {
-	lis, err := net.Listen("tcp", ip)
+	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -68,8 +70,19 @@ func (n *Node) StartServer() {
 	}
 }
 
+func (n *Node) Random() {
+	r := rand.New(rand.NewSource(goTime.Now().UnixNano()))
+	for {
+		goTime.Sleep(goTime.Duration(r.Intn(10)) * goTime.Second)
+		if n.status == Status_RELEASED {
+			n.GetLock()
+		}
+	}
+}
+
 // Send Req message
-func (n *Node) GetLock(in *pb.EmptyWithTime) error {
+func (n *Node) GetLock() error {
+	log.Printf("Getting lock\n")
 	// We cannot ask others if we already have the lock / have asked
 	if n.status == Status_WANTED || n.status == Status_HELD {
 		return nil
@@ -81,8 +94,10 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 	for _, member := range n.members {
 		n.timestamp.Increment()
 
+		url := member + port
+		log.Printf("Send req to: %s\n", url)
 		// Set up a connection to the server.
-		conn, err := grpc.Dial(member, grpc.WithInsecure())
+		conn, err := grpc.Dial(url, grpc.WithInsecure())
 		if err != nil {
 			return err
 		}
@@ -108,7 +123,11 @@ func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 
 // Send Res message
 func (n *Node) SendRes(target string) {
-	conn, err := grpc.Dial(target, grpc.WithInsecure())
+	log.Printf("Sending response\n")
+
+	url := target + port
+	log.Printf("Send res to: %s\n", url)
+	conn, err := grpc.Dial(url, grpc.WithInsecure())
 	if err != nil {
 		return
 	}
@@ -132,8 +151,10 @@ func (n *Node) SendRes(target string) {
 
 // Handle incoming Req message
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
-
 	callerIp := getClientIpAddress(ctx)
+
+	log.Printf("Handling request from %s, current status: %d, local time: %d, in time: %d\n", callerIp, n.status, n.timestamp.GetTime(), in.GetTime())
+
 	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
 		n.queue.Enqueue(callerIp)
 	} else {
@@ -149,14 +170,18 @@ func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTim
 // Handle incoming Res
 // TODO: Implement handling of release here
 func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime, error) {
+	log.Printf("Handling response from %s\n", getClientIpAddress(ctx))
 	n.timestamp.Sync(in.GetTime())
 	n.timestamp.Increment()
 
 	// Decrease response count
 	n.responses -= 1
+	log.Printf("Reponses: %d\n", n.responses)
 
 	// If all nodes have responded, we have achieved lock
 	if n.responses == 0 {
+		log.Printf("Achieved lock\n")
+
 		n.status = Status_HELD
 		go n.WriteToFile()
 	}
@@ -164,14 +189,16 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
 }
 
-func (n *Node) WriteToFile(){
-	file, err := os.OpenFile("file.txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY,0666)
-	if err!=nil{
+func (n *Node) WriteToFile() {
+	log.Printf("Writing value to file\n")
+	file, err := os.OpenFile("/tmp/exercise2/data/file.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	file.Write([]byte(n.timestamp.GetDisplayableContent()+"\n"))
+	file.Write([]byte(n.timestamp.GetDisplayableContent() + "\n"))
 
+	log.Printf("Closing file and exiting\n")
 	file.Close()
 
 	n.Exit()
@@ -181,10 +208,12 @@ func (n *Node) WriteToFile(){
 * Exits the 'HELD' mode and releases the distributed lock, by telling other nodes in the network
  */
 func (n *Node) Exit() {
+	log.Printf("Exiting\n")
 	if n.status != Status_HELD {
 		return // only when we are in status 'HELD' will this function be executed...
 	}
 
+	log.Printf("Sending exit responses\n")
 	for !n.queue.IsEmpty() {
 		addr := fmt.Sprintf("%v", n.queue.Dequeue())
 		n.SendRes(addr)
