@@ -26,9 +26,10 @@ const (
 type Status int32
 
 const (
-	Status_RELEASED Status = 0
-	Status_WANTED   Status = 1
-	Status_HELD     Status = 2
+	Status_RELEASED  Status = 0
+	Status_WANTED    Status = 1
+	Status_HELD      Status = 2
+	Status_HAVE_HELD Status = 3
 )
 
 type Node struct {
@@ -51,6 +52,8 @@ func main() {
 		lock:    sync.Mutex{},
 	}
 
+	// Handle startup time
+	goTime.Sleep(2 * goTime.Second)
 	go node.Random()
 	node.StartServer()
 }
@@ -77,7 +80,7 @@ func (n *Node) StartServer() {
 func (n *Node) Random() {
 	r := rand.New(rand.NewSource(goTime.Now().UnixNano()))
 	for {
-		goTime.Sleep(goTime.Duration(r.Intn(10)) * goTime.Second)
+		goTime.Sleep(goTime.Duration(r.Intn(3)) * goTime.Second)
 		if n.status == Status_RELEASED {
 			n.GetLock()
 		}
@@ -156,7 +159,9 @@ func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.Empty, error
 
 	status := n.GetStatus()
 	if status == Status_HELD || (status == Status_WANTED && n.GetTs() < in.GetTime()) {
+		log.Printf("Enque %s\n", callerIp)
 		n.queue.Enqueue(callerIp)
+		n.queue.Print()
 	} else {
 		n.SendRes(callerIp)
 	}
@@ -228,10 +233,18 @@ func (n *Node) Exit() {
 		return // only when we are in status 'HELD' will this function be executed...
 	}
 
+	n.SetStatus(Status_HAVE_HELD)
+
 	log.Printf("Sending exit responses\n")
+	n.queue.Print()
 	for !n.queue.IsEmpty() {
-		addr := n.queue.Dequeue().(string)
-		n.SendRes(addr)
+		n.queue.Print()
+		addr := n.queue.Dequeue()
+		if addr == nil {
+			break
+		}
+
+		n.SendRes(addr.(string))
 	}
 
 	n.SetStatus(Status_RELEASED)

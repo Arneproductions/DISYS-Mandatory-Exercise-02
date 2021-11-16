@@ -3,12 +3,13 @@ package collection
 import (
 	"container/list"
 	"errors"
+	"log"
 	"sync"
 )
 
 type Queue struct {
 	lock sync.Mutex
-	list list.List
+	list *list.List
 }
 
 /*
@@ -17,7 +18,7 @@ type Queue struct {
 func NewQueue() Queue {
 	return Queue{
 		lock: sync.Mutex{},
-		list: *list.New(),
+		list: list.New(),
 	}
 }
 
@@ -51,4 +52,10 @@ func (q *Queue) Dequeue() interface{} {
 	// Get the first element in the list
 	ele := q.list.Front()
 	return q.list.Remove(ele) // pop it
+}
+
+func (q *Queue) Print() {
+	log.Printf("List: %v\n", q.list)
+	log.Printf("List is empty: %v\n", q.IsEmpty())
+	log.Printf("List len: %d\n", q.list.Len())
 }
