@@ -42,15 +42,19 @@ type Node struct {
 }
 
 func main() {
-	clusterAddr := flag.String("clusterAddress", "localhost", "")
+	// clusterAddr := flag.String("clusterAddress", "localhost", "")
 	flag.Parse()
-	node := &Node{
-		processId: os.Getpid(),
-		queue:     col.NewQueue(),
-	}
+	// node := &Node{
+	// 	processId: os.Getpid(),
+	// 	queue:     col.NewQueue(),
+	// }
 
-	node.StartCluster(clusterAddr)
-	node.StartServer()
+	// node.StartCluster(clusterAddr)
+	// node.StartServer()
+
+	n := Node{}
+
+	n.WriteToFile()
 }
 
 func getClientIpAddress(c context.Context) string {
@@ -185,22 +189,21 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 	// If all nodes have responded, we have achieved lock
 	if n.responses == 0 {
 		n.status = Status_HELD
-		go n.WriteToFile(n.timestamp.GetTime())
+		go n.WriteToFile()
 	}
 
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
 }
 
-func (n *Node) WriteToFile(time int32){
-	//todo: check if file exist, if not: create file
-	file, err := os.Open("file.go")
+func (n *Node) WriteToFile(){
+	file, err := os.OpenFile("file.txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY,0666)
 	if err!=nil{
-		file,err = os.Create("file.go")
+		log.Fatal(err)
 	}
-	//todo: write to file
-	//data := []byte("time\n")
-	//os.WriteFile("file.go",data,0666)
-	file.WriteString("time\n")
+
+	file.Write([]byte(n.timestamp.GetDisplayableContent()+"\n"))
+
+	file.Close()
 
 	n.Exit()
 }
