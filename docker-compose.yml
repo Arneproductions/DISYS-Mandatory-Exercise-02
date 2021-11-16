@@ -4,30 +4,56 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.2
     environment:
-      CLUSTER_HOST: "cluster"
-    depends_on:
-      - cluster
+      CLIENTS: "172.16.238.3,172.16.238.4,172.16.238.5"
+    volumes:
+      - data:/tmp/exercise2/data
 
   client-2:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.3
     environment:
-      CLUSTER_HOST: "cluster"
-    depends_on:
-      - cluster
+      CLIENTS: "172.16.238.2,172.16.238.4,172.16.238.5"
+    volumes:
+      - data:/tmp/exercise2/data
 
   client-3:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.4
     environment:
-      CLUSTER_HOST: "cluster"
-    depends_on:
-      - cluster
+      CLIENTS: "172.16.238.2,172.16.238.3,172.16.238.5"
+    volumes:
+      - data:/tmp/exercise2/data
 
-  cluster:
+  client-4:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.5
+    environment:
+      CLIENTS: "172.16.238.2,172.16.238.3,172.16.238.4"
+    volumes:
+      - data:/tmp/exercise2/data
+
+networks:
+  app_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.16.238.0/24"
+
+volumes:
+  data:

@@ -20,7 +20,6 @@ require (
 	github.com/hashicorp/logutils v1.0.0 // indirect
 	github.com/hashicorp/mdns v1.0.1 // indirect
 	github.com/hashicorp/memberlist v0.2.2 // indirect
-	github.com/hashicorp/serf v0.9.5 // indirect
 	github.com/mattn/go-colorable v0.1.6 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/miekg/dns v1.1.26 // indirect
