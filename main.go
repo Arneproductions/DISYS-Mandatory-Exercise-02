@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	goTime "time"
 
@@ -36,6 +37,7 @@ type Node struct {
 	responses int
 	queue     col.Queue
 	members   []string
+	lock 	  sync.Mutex
 }
 
 func main() {
@@ -44,6 +46,7 @@ func main() {
 	node := &Node{
 		queue:   col.NewQueue(),
 		members: clients,
+		lock: 	 sync.Mutex{},
 	}
 
 	node.StartServer()
@@ -71,11 +74,12 @@ func (n *Node) StartServer() {
 // Send Req message
 func (n *Node) GetLock(in *pb.EmptyWithTime) error {
 	// We cannot ask others if we already have the lock / have asked
-	if n.status == Status_WANTED || n.status == Status_HELD {
+	status := n.GetStatus()
+	if status == Status_WANTED || status == Status_HELD {
 		return nil
 	}
 
-	n.status = Status_WANTED
+	n.SetStatus(Status_WANTED)
 	n.responses = len(n.members)
 
 	for _, member := range n.members {
@@ -134,7 +138,8 @@ func (n *Node) SendRes(target string) {
 func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.EmptyWithTime, error) {
 
 	callerIp := getClientIpAddress(ctx)
-	if n.status == Status_HELD || (n.status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
+	status := n.GetStatus()
+	if status == Status_HELD || (status == Status_WANTED && n.timestamp.GetTime() < in.GetTime()) {
 		n.queue.Enqueue(callerIp)
 	} else {
 		n.SendRes(callerIp)
@@ -157,7 +162,7 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 
 	// If all nodes have responded, we have achieved lock
 	if n.responses == 0 {
-		n.status = Status_HELD
+		n.SetStatus(Status_HELD)
 		go n.WriteToFile()
 	}
 
@@ -177,11 +182,25 @@ func (n *Node) WriteToFile(){
 	n.Exit()
 }
 
+func (n *Node) SetStatus(s Status) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	n.status = s
+}
+
+func (n *Node) GetStatus() Status {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	return n.status
+}
+
 /*
 * Exits the 'HELD' mode and releases the distributed lock, by telling other nodes in the network
- */
+*/
 func (n *Node) Exit() {
-	if n.status != Status_HELD {
+	if n.GetStatus() != Status_HELD {
 		return // only when we are in status 'HELD' will this function be executed...
 	}
 
@@ -190,5 +209,5 @@ func (n *Node) Exit() {
 		n.SendRes(addr)
 	}
 
-	n.status = Status_RELEASED
+	n.SetStatus(Status_RELEASED)
 }
