@@ -18,8 +18,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DmeApiServiceClient interface {
-	Req(ctx context.Context, in *RequestMessage, opts ...grpc.CallOption) (*EmptyWithTime, error)
-	Res(ctx context.Context, in *EmptyWithTime, opts ...grpc.CallOption) (*EmptyWithTime, error)
+	Req(ctx context.Context, in *RequestMessage, opts ...grpc.CallOption) (*Empty, error)
+	Res(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type dmeApiServiceClient struct {
@@ -30,8 +30,8 @@ func NewDmeApiServiceClient(cc grpc.ClientConnInterface) DmeApiServiceClient {
 	return &dmeApiServiceClient{cc}
 }
 
-func (c *dmeApiServiceClient) Req(ctx context.Context, in *RequestMessage, opts ...grpc.CallOption) (*EmptyWithTime, error) {
-	out := new(EmptyWithTime)
+func (c *dmeApiServiceClient) Req(ctx context.Context, in *RequestMessage, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
 	err := c.cc.Invoke(ctx, "/DmeApiService/Req", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -39,8 +39,8 @@ func (c *dmeApiServiceClient) Req(ctx context.Context, in *RequestMessage, opts 
 	return out, nil
 }
 
-func (c *dmeApiServiceClient) Res(ctx context.Context, in *EmptyWithTime, opts ...grpc.CallOption) (*EmptyWithTime, error) {
-	out := new(EmptyWithTime)
+func (c *dmeApiServiceClient) Res(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
 	err := c.cc.Invoke(ctx, "/DmeApiService/Res", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -52,8 +52,8 @@ func (c *dmeApiServiceClient) Res(ctx context.Context, in *EmptyWithTime, opts .
 // All implementations must embed UnimplementedDmeApiServiceServer
 // for forward compatibility
 type DmeApiServiceServer interface {
-	Req(context.Context, *RequestMessage) (*EmptyWithTime, error)
-	Res(context.Context, *EmptyWithTime) (*EmptyWithTime, error)
+	Req(context.Context, *RequestMessage) (*Empty, error)
+	Res(context.Context, *Empty) (*Empty, error)
 	mustEmbedUnimplementedDmeApiServiceServer()
 }
 
@@ -61,10 +61,10 @@ type DmeApiServiceServer interface {
 type UnimplementedDmeApiServiceServer struct {
 }
 
-func (UnimplementedDmeApiServiceServer) Req(context.Context, *RequestMessage) (*EmptyWithTime, error) {
+func (UnimplementedDmeApiServiceServer) Req(context.Context, *RequestMessage) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Req not implemented")
 }
-func (UnimplementedDmeApiServiceServer) Res(context.Context, *EmptyWithTime) (*EmptyWithTime, error) {
+func (UnimplementedDmeApiServiceServer) Res(context.Context, *Empty) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Res not implemented")
 }
 func (UnimplementedDmeApiServiceServer) mustEmbedUnimplementedDmeApiServiceServer() {}
@@ -99,7 +99,7 @@ func _DmeApiService_Req_Handler(srv interface{}, ctx context.Context, dec func(i
 }
 
 func _DmeApiService_Res_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EmptyWithTime)
+	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func _DmeApiService_Res_Handler(srv interface{}, ctx context.Context, dec func(i
 		FullMethod: "/DmeApiService/Res",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DmeApiServiceServer).Res(ctx, req.(*EmptyWithTime))
+		return srv.(DmeApiServiceServer).Res(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
