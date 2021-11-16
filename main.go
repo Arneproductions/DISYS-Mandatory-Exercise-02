@@ -167,13 +167,11 @@ func (n *Node) Req(ctx context.Context, in *pb.RequestMessage) (*pb.Empty, error
 }
 
 // Handle incoming Res
-// TODO: Implement handling of release here
 func (n *Node) Res(ctx context.Context, in *pb.Empty) (*pb.Empty, error) {
 	log.Printf("Handling response from %s\n", getClientIpAddress(ctx))
 
 	// Decrease response count
 	n.responses -= 1
-	log.Printf("Reponses: %d\n", n.responses)
 
 	// If all nodes have responded, we have achieved lock
 	if n.responses == 0 {
@@ -240,8 +238,9 @@ func (n *Node) Exit() {
 }
 
 func (n *Node) GetTs() int32 {
-	// TODO: Change to andreas
-	if n.status == Status_WANTED || n.status == Status_HELD {
+	status := n.GetStatus()
+
+	if status == Status_WANTED || status == Status_HELD {
 		return n.lockTs
 	} else {
 		return n.timestamp.GetTime()
