@@ -185,9 +185,23 @@ func (n *Node) Res(ctx context.Context, in *pb.EmptyWithTime) (*pb.EmptyWithTime
 	// If all nodes have responded, we have achieved lock
 	if n.responses == 0 {
 		n.status = Status_HELD
+		go n.WriteToFile()
 	}
 
 	return &pb.EmptyWithTime{Time: n.timestamp.GetTime()}, nil
+}
+
+func (n *Node) WriteToFile(){
+	file, err := os.OpenFile("file.txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY,0666)
+	if err!=nil{
+		log.Fatal(err)
+	}
+
+	file.Write([]byte(n.timestamp.GetDisplayableContent()+"\n"))
+
+	file.Close()
+
+	n.Exit()
 }
 
 /*
